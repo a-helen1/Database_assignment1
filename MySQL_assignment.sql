@@ -6,9 +6,17 @@ CREATE TABLE IF NOT exists Ward
 (
 	wardID int auto_increment,
     wardName varchar(20),
-    wardType ENUM('male', 'female'),
+    wardType ENUM ('emergency', 'intensive care', 'standard'),
     primary key (WardID)
 );
+
+insert into ward (wardName, wardType)
+values
+('Ward 1','Emergency'),
+('Ward 2', 'Intensive care'),
+('Ward 3', 'Standard');
+
+select * from ward;
 
 create table if not exists Patient
 (
@@ -23,8 +31,6 @@ create table if not exists Patient
     dischargeDate date default null, 
     primary key (patientID)
 );
-
-drop table patient;
 
 INSERT into patient (fName, lName, street, town, county, contactNo, arriveDate, dischargeDate)
 Values
@@ -65,17 +71,34 @@ select * from patient;
 create table if not exists Bed
 (
 	bedNumber int auto_increment,
-    bedType ENUM ('emergency', 'outPatient', 'standard'),
+    bedType ENUM ('emergency', 'intensive care', 'standard'),
     wardID int,
     patientID int,
     primary key (bedNumber),
     constraint FK_ward foreign key (wardID)
     references ward(wardID)
     on update cascade on delete set null,
-    constraint FK_patient foreign key(patientID)
+    constraint FK_patient_bed foreign key(patientID)
     references patient(patientID)
     on update cascade on delete set NULL
 );
+
+insert into bed (bedType, wardID, patientId)
+values
+('emergency', '1','12'),
+('intensive care', '2','13'),
+('standard', '3','14'),
+('emergency', '1','15'),
+('intensive care', '2','16'),
+('standard', '3','17'),
+('emergency', '1','18'),
+('intensive care', '2','19'),
+('standard', '3','20'),
+('emergency', '1','21'),
+('intensive care', '2','22'),
+('standard', '3','23');
+
+select * from bed;
     
 create table if not exists Doctor
 (
@@ -146,7 +169,6 @@ create table if not exists Visit
     references doctor(PPS)
     on update cascade on delete set null
 );
-drop table visit;
 
 insert into visit (patientId, pps, date, time)  
 values
@@ -236,9 +258,179 @@ values
 
 select * from prescription;
 
-drop table Prescription;
+
+commit;
+
+-- ***QUERIES***
+ 
+-- count of current patients
+select count(patientID) as "Current Patients"
+ from patient
+ Where dischargeDate is null;
+ 
+ -- Count of discharged patients
+ select count(patientID) as "Current Patients"
+ from patient
+ Where dischargeDate is not null;
+ 
+ -- List of current patients ordered by name
+ 
+ select concat(fName," ", lName) as 'Name'
+ from patient 
+ where dischargeDate is null
+ order by fName, lName;
+ 
+ -- List of previous patients ordered by name
+ 
+ select concat(fName," ", lName) as 'Name'
+ from patient 
+ where dischargeDate is not null
+ order by fName, lName; 
+ 
+-- Patients in the Emergency Ward
+
+select concat(fName," ", lName) as 'Name', wardName as 'Ward'
+from patient join bed
+on patient.patientID = bed.patientID
+join ward
+on bed.wardID = ward.wardID
+where ward.wardID = '1';
+
+-- Patients discharged in 2018
+select concat(fName," ", lName) as 'Name', dischargeDate as 'Date Discharged'
+from patient
+where dischargeDate between '2018-01-01' and '2018-12-31'
+order by dischargeDate;
+
+-- Drugs & dose perscribed for current patients
+
+select concat(fName," ", lName) as 'Name',drugName as 'Drug', doseageDetails as 'Dose'
+from drug join prescription
+on drug.drugID = prescription.drugID
+join visit
+on prescription.visitID = visit.visitID
+join patient
+on visit.patientID = patient.patientID
+where dischargeDate is not null
+order by fName, lName;
+ 
+ -- Average days admitted per ward
+ 
+ select distinct wardName,
+ (
+	select round(avg((datediff(dischargeDate,arriveDate))),2)
+    from patient  
+ ) as 'Average Admitted Days'
+from patient join bed
+on patient.patientID = bed.patientID
+join ward
+on bed.wardID = ward.wardID;
 
 
-commit; 
+-- visits that resulted in a prescription 
+
+select concat(fName, " ", lName) as 'Name', concat(date, " ", time) as 'Vist Date/time', drugName as 'Drug'
+from visit left join prescription
+on visit.visitID = prescription.visitID
+join patient
+on visit.patientID = patient.patientID
+left join drug 
+on prescription.drugID = drug.drugID; 
+
+-- number of times Ceftazidime has been perscribed
+
+select count(drugID) as 'No. times Ceftazidime used'
+from prescription 
+where drugID = 
+(
+    select drugID 
+    from drug 
+    where drugName = 'Ceftazidime'
+);
+
+-- Number of patients by county 
+
+select count(patientID), county
+from patient
+group by county;
+
+-- ***Index***
+
+-- create an index of doctor specialisations
+
+create index docSpec on doctor(specialisation);
+
+-- ***Views***
+
+-- Create views that shows the prescritions needed for each ward
+
+create or replace view ward1scripts AS
+	select concat(fName, " ", lName) as 'Patient Name', drugName as 'Drug', doseageDetails as 'Doesage'
+    from patient join visit
+    on patient.patientID = visit.patientID
+    join prescription 
+    on visit.visitID = prescription.visitID
+    join drug
+    on prescription.drugID = drug.drugID
+    join bed 
+    on patient.patientID = bed.patientID
+    join ward 
+    on bed.wardID = ward.wardID
+    where ward.wardID =1;
     
+select * from ward1scripts;
+
+create or replace view ward2scripts AS
+	select concat(fName, " ", lName) as 'Patient Name', drugName as 'Drug', doseageDetails as 'Doesage'
+    from patient join visit
+    on patient.patientID = visit.patientID
+    join prescription 
+    on visit.visitID = prescription.visitID
+    join drug
+    on prescription.drugID = drug.drugID
+    join bed 
+    on patient.patientID = bed.patientID
+    join ward 
+    on bed.wardID = ward.wardID
+    where ward.wardID =2;
+    
+select * from ward2scripts;
+
+create or replace view ward3scripts AS
+	select concat(fName, " ", lName) as 'Patient Name', drugName as 'Drug', doseageDetails as 'Doesage'
+    from patient join visit
+    on patient.patientID = visit.patientID
+    join prescription 
+    on visit.visitID = prescription.visitID
+    join drug
+    on prescription.drugID = drug.drugID
+    join bed 
+    on patient.patientID = bed.patientID
+    join ward 
+    on bed.wardID = ward.wardID
+    where ward.wardID =3;
+    
+select * from ward3scripts;
+
+-- *** Users and Privileges***
+
+-- create users 
+
+create user Nurse identified by 'nurse';
+
+grant select,update on bed to Nurse;
+grant select on prescription to Nurse;
+grant select on patient to Nurse;
+grant select on visit to Nurse;
+
+create user Doctor identified by 'doctor';
+
+grant insert, update, select on prescription to Doctor;
+grant insert, update, select on visit to Doctor;
+grant select on 
+
+
+ commit;
+ 
+ 
     
