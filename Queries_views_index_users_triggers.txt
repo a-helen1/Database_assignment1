@@ -1,0 +1,246 @@
+-- ***QUERIES***
+  
+ 
+-- count of current patients
+select count(patientID) as "Current Patients"
+ from patient
+ Where dischargeDate is null;
+ 
+ -- Count of discharged patients
+ select count(patientID) as "Current Patients"
+ from patient
+ Where dischargeDate is not null;
+ 
+ -- List of current patients ordered by name
+ 
+ select concat(fName," ", lName) as 'Name'
+ from patient 
+ where dischargeDate is null
+ order by fName, lName;
+ 
+ -- List of previous patients ordered by name
+ 
+ select concat(fName," ", lName) as 'Name'
+ from patient 
+ where dischargeDate is not null
+ order by fName, lName; 
+ 
+-- Patients in the Emergency Ward
+
+select concat(fName," ", lName) as 'Name', wardName as 'Ward'
+from patient join bed
+on patient.patientID = bed.patientID
+join ward
+on bed.wardID = ward.wardID
+where ward.wardID = '1';
+
+-- Patients discharged in 2018
+
+select concat(fName," ", lName) as 'Name', dischargeDate as 'Date Discharged'
+from patient
+where dischargeDate between '2018-01-01' and '2018-12-31'
+order by dischargeDate;
+
+-- Drugs & dose perscribed for current patients
+
+select concat(fName," ", lName) as 'Name',drugName as 'Drug', doseageDetails as 'Dose'
+from drug join prescription
+on drug.drugID = prescription.drugID
+join visit
+on prescription.visitID = visit.visitID
+join patient
+on visit.patientID = patient.patientID
+where dischargeDate is not null
+order by fName, lName;
+ 
+ -- Average days admitted per ward
+ 
+ select distinct wardName,
+ (
+	select round(avg((datediff(dischargeDate,arriveDate))),2)
+    from patient  
+ ) as 'Average Admitted Days'
+from patient join bed
+on patient.patientID = bed.patientID
+join ward
+on bed.wardID = ward.wardID;
+
+-- visits that resulted in a prescription 
+
+select concat(fName, " ", lName) as 'Name', concat(date, " ", time) as 'Vist Date/time', drugName as 'Drug'
+from visit left join prescription
+on visit.visitID = prescription.visitID
+join patient
+on visit.patientID = patient.patientID
+left join drug 
+on prescription.drugID = drug.drugID; 
+
+-- number of times Ceftazidime has been perscribed
+
+select count(drugID) as 'No. times Ceftazidime used'
+from prescription 
+where drugID = 
+(
+    select drugID 
+    from drug 
+    where drugName = 'Ceftazidime'
+);
+
+-- Number of patients by county 
+
+select count(patientID), county
+from patient
+group by county;
+
+
+
+-- ***Index***
+
+
+
+-- create an index of doctor specialisations
+
+create index docSpec on doctor(specialisation);
+
+
+
+-- ***Views***
+
+
+
+-- Create views that shows the prescritions needed for each ward
+
+create or replace view ward1scripts AS
+	select concat(fName, " ", lName) as 'Patient Name', drugName as 'Drug', doseageDetails as 'Doesage'
+    from patient join visit
+    on patient.patientID = visit.patientID
+    join prescription 
+    on visit.visitID = prescription.visitID
+    join drug
+    on prescription.drugID = drug.drugID
+    join bed 
+    on patient.patientID = bed.patientID
+    join ward 
+    on bed.wardID = ward.wardID
+    where ward.wardID =1;
+    
+select * from ward1scripts;
+
+create or replace view ward2scripts AS
+	select concat(fName, " ", lName) as 'Patient Name', drugName as 'Drug', doseageDetails as 'Doesage'
+    from patient join visit
+    on patient.patientID = visit.patientID
+    join prescription 
+    on visit.visitID = prescription.visitID
+    join drug
+    on prescription.drugID = drug.drugID
+    join bed 
+    on patient.patientID = bed.patientID
+    join ward 
+    on bed.wardID = ward.wardID
+    where ward.wardID =2;
+    
+select * from ward2scripts;
+
+create or replace view ward3scripts AS
+	select concat(fName, " ", lName) as 'Patient Name', drugName as 'Drug', doseageDetails as 'Doesage'
+    from patient join visit
+    on patient.patientID = visit.patientID
+    join prescription 
+    on visit.visitID = prescription.visitID
+    join drug
+    on prescription.drugID = drug.drugID
+    join bed 
+    on patient.patientID = bed.patientID
+    join ward 
+    on bed.wardID = ward.wardID
+    where ward.wardID =3;
+    
+select * from ward3scripts;
+
+
+
+-- *** Users and Privileges***
+
+
+
+create user Nurse identified by 'nurse';
+
+grant select,update on bed to Nurse;
+grant select on prescription to Nurse;
+grant select on patient to Nurse;
+grant select on visit to Nurse;
+
+create user Doctor identified by 'doctor';
+
+grant insert, update, select on prescription to Doctor;
+grant insert, update, select on visit to Doctor;
+grant select on patient to Doctor;
+grant select on drug to Doctor;
+
+create user Pharmacist identified by 'pharmacist';
+
+grant select, update, delete, insert on drug to Pharmacist;
+grant select on patient to Pharmacist;
+grant select on visit to Pharmacist;
+grant select on prescription to Pharmacist;
+
+create user Administrator identified by 'administrator';
+
+grant all on hospital.* to Administrator;
+
+
+
+-- ***Triggers***
+
+
+
+-- Count of times a drug is prescribed. Each time a drug is prescribed the count is incremented.  
+
+create table if not exists prescriptionCount
+(
+	id int auto_increment primary key, 
+    drugID int,
+    count int,
+    constraint FK_drugID foreign key(drugID)
+    references drug(drugID)
+    on update cascade on delete no action
+);
+
+-- Update the prescriptionCount table when a new drug is added
+
+DELIMITER $$
+create trigger drug_count
+	after insert on drug
+	for each row
+BEGIN
+	insert into prescriptionCount
+    set 
+    drugID = new.drugID,
+    count = 0;
+END $$
+DELIMITER ;
+
+-- Increase the count when a drug is prescribed
+
+DELIMITER $$
+create trigger drug_count_add
+	after insert on prescription
+    for each row
+BEGIN
+	update prescriptionCount
+	set count = count +1
+    where drugid = new.drugid;
+END $$
+DELIMITER ;
+
+insert into prescription( visitID, drugID, doseageDetails)
+values
+('12','10','one a day'); 
+
+insert into drug (drugName, manufacturer)
+values('panadol','GSK');
+
+select * from prescriptionCount;
+
+commit;

@@ -154,6 +154,7 @@ Values
 
 select * from drug;
 
+
 create table if not exists Visit
 (
 	visitID int auto_increment,
@@ -259,9 +260,10 @@ values
 select * from prescription;
 
 
-commit;
 
 -- ***QUERIES***
+ 
+ 
  
 -- count of current patients
 select count(patientID) as "Current Patients"
@@ -326,7 +328,6 @@ on patient.patientID = bed.patientID
 join ward
 on bed.wardID = ward.wardID;
 
-
 -- visits that resulted in a prescription 
 
 select concat(fName, " ", lName) as 'Name', concat(date, " ", time) as 'Vist Date/time', drugName as 'Drug'
@@ -354,13 +355,21 @@ select count(patientID), county
 from patient
 group by county;
 
+
+
 -- ***Index***
+
+
 
 -- create an index of doctor specialisations
 
 create index docSpec on doctor(specialisation);
 
+
+
 -- ***Views***
+
+
 
 -- Create views that shows the prescritions needed for each ward
 
@@ -412,9 +421,11 @@ create or replace view ward3scripts AS
     
 select * from ward3scripts;
 
+
+
 -- *** Users and Privileges***
 
--- create users 
+
 
 create user Nurse identified by 'nurse';
 
@@ -427,10 +438,75 @@ create user Doctor identified by 'doctor';
 
 grant insert, update, select on prescription to Doctor;
 grant insert, update, select on visit to Doctor;
-grant select on 
+grant select on patient to Doctor;
+grant select on drug to Doctor;
+
+create user Pharmacist identified by 'pharmacist';
+
+grant select, update, delete, insert on drug to Pharmacist;
+grant select on patient to Pharmacist;
+grant select on visit to Pharmacist;
+grant select on prescription to Pharmacist;
+
+create user Administrator identified by 'administrator';
+
+grant all on hospital.* to Administrator;
 
 
- commit;
+
+-- ***Triggers***
+
+
+
+-- Count of times a drug is prescribed. Each time a drug is prescribed the count is incremented.  
+
+create table if not exists prescriptionCount
+(
+	id int auto_increment primary key, 
+    drugID int,
+    count int,
+    constraint FK_drugID foreign key(drugID)
+    references drug(drugID)
+    on update cascade on delete no action
+);
+
+-- Update the prescriptionCount table when a new drug is added
+
+DELIMITER $$
+create trigger drug_count
+	after insert on drug
+	for each row
+BEGIN
+	insert into prescriptionCount
+    set 
+    drugID = new.drugID,
+    count = 0;
+END $$
+DELIMITER ;
+
+-- Increase the count when a drug is prescribed
+
+DELIMITER $$
+create trigger drug_count_add
+	after insert on prescription
+    for each row
+BEGIN
+	update prescriptionCount
+	set count = count +1
+    where drugid = new.drugid;
+END $$
+DELIMITER ;
+
+insert into prescription( visitID, drugID, doseageDetails)
+values
+('12','10','one a day'); 
+
+insert into drug (drugName, manufacturer)
+values('panadol','GSK');
+
+select * from prescriptionCount;
+
+commit;
  
  
     
